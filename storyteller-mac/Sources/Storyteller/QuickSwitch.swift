@@ -5,8 +5,8 @@ import SwiftUI
 @MainActor @Observable
 final class QuickSwitch {
     /// 1–9, then letters that don't clash with app/system shortcuts
-    /// (skips a c h j m n q r v w x z and others in use).
-    static let keys: [Character] = Array("123456789bdefgiklopstuy")
+    /// (skips a c f g h j m n q r v w x z and others in use).
+    static let keys: [Character] = Array("123456789bdeiklopstuy")
 
     var showHints = false
     @ObservationIgnored private var monitors: [Any] = []

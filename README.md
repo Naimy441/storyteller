@@ -15,6 +15,8 @@
 - **Context ring** showing how full the model's context is, with a breakdown.
 - **Story memory sizes** (4K–32K) with RAM estimates based on the model's architecture.
 - Retry, undo/redo, inline editing, text zoom, and auto-saved drafts.
+- <kbd>Tab</kbd> cycles Do → Say → Story → Guide, and <kbd>⌘F</kbd> searches the current story.
+- Automatic updates, via [Sparkle](https://sparkle-project.org).
 - Stories are plain JSON files in a folder you choose.
 
 ## Requirements
@@ -30,7 +32,7 @@
 
 ## Install
 
-Download the latest `Storyteller-x.y.z.dmg` from [Releases](../../releases), open it, and drag **Storyteller** to Applications. The app is signed and notarized.
+Download the latest `Storyteller-x.y.z.dmg` from [Releases](../../releases), open it, and drag **Storyteller** to Applications. The app is signed and notarized. From 1.1.0 on, it updates itself; to check manually, choose **Storyteller → Check for Updates…**.
 
 ## Where stories are saved
 
@@ -47,10 +49,13 @@ cd storyteller-mac
 ./build.sh          # builds Storyteller.app for this Mac
 ```
 
-`release.sh` builds a universal app, signs it with a Developer ID, notarizes it, and packages it as a DMG. It needs your own signing identity and notarytool profile:
+`release.sh` builds a universal app, signs it with a Developer ID, notarizes it, packages it as a DMG, and writes a Sparkle `appcast.xml`. It needs your own signing identity, notarytool profile, and Sparkle EdDSA key. To create the key, run `.build/artifacts/sparkle/Sparkle/bin/generate_keys`, then replace `SUPublicEDKey` in `build.sh` with your public key.
 
 ```bash
-SIGN_IDENTITY="Developer ID Application: …" NOTARY_PROFILE=<profile> ./release.sh 1.0.0
+SIGN_IDENTITY="Developer ID Application: …" NOTARY_PROFILE=<profile> ./release.sh 1.1.0
+gh release create v1.1.0 dist/Storyteller-1.1.0.dmg dist/appcast.xml
 ```
+
+Installed apps check `releases/latest/download/appcast.xml`, so every release needs both files attached.
 
 The app icon is drawn by `tools/make-icon.swift`.

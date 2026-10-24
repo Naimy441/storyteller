@@ -30,10 +30,15 @@ private struct StoryColumn: View {
     @State private var position = ScrollPosition(edge: .bottom)
     @AppStorage(TextZoom.key) private var zoom = 1.0
     @State private var pinchStart: Double?
+    @State private var findOpen = false
+    @State private var query = ""
+    @State private var matchIndex = 0
 
     var body: some View {
         let adv = store.adventure(id) ?? Adventure(title: "")
         let busy = store.generating.contains(id)
+        let matches = findOpen ? Self.matches(in: adv, query: query) : []
+        let current = matches.isEmpty ? nil : matches[min(matchIndex, matches.count - 1)]
 
         ZStack(alignment: .bottom) {
             ScrollView {
@@ -42,7 +47,9 @@ private struct StoryColumn: View {
                         EmptyStory()
                     }
                     ForEach(adv.actions) { a in
-                        ActionRow(advID: id, action: a, streaming: busy && a.id == adv.actions.last?.id && a.type == .ai)
+                        ActionRow(advID: id, action: a, streaming: busy && a.id == adv.actions.last?.id && a.type == .ai,
+                                  highlight: matches.isEmpty ? nil : Highlight(
+                                      query: query, current: current?.actionID == a.id ? current?.ordinal : nil))
                     }
                     if let err = store.errors[id] {
                         ErrorBanner(text: err)
@@ -50,6 +57,7 @@ private struct StoryColumn: View {
                     // Space for the floating composer.
                     Color.clear.frame(height: 150)
                 }
+                .scrollTargetLayout()
                 .frame(maxWidth: 680)
                 .padding(.horizontal, 52)
                 .padding(.top, 76)
@@ -106,6 +114,49 @@ private struct StoryColumn: View {
         }
         .overlay(alignment: .top) {
             TopBar(id: id, title: adv.title, busy: busy, showSetup: $showSetup)
+        }
+        .overlay(alignment: .topTrailing) {
+            if findOpen {
+                FindBar(query: $query, count: matches.count, index: matches.isEmpty ? 0 : min(matchIndex, matches.count - 1),
+                        next: { step(1, count: matches.count) }, previous: { step(-1, count: matches.count) },
+                        close: closeFind)
+                    .padding(.top, 50)
+                    .padding(.trailing, 18)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .onChange(of: query) { matchIndex = 0 }
+        .onChange(of: current) {
+            guard let current else { return }
+            following = false
+            withAnimation(.easeOut(duration: 0.25)) { position.scrollTo(id: current.actionID, anchor: .center) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .findInStory)) { _ in
+            withAnimation(.snappy(duration: 0.2)) { findOpen = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .findNext)) { _ in
+            if findOpen { step(1, count: matches.count) } else { withAnimation(.snappy(duration: 0.2)) { findOpen = true } }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .findPrevious)) { _ in
+            if findOpen { step(-1, count: matches.count) }
+        }
+    }
+
+    private func step(_ delta: Int, count: Int) {
+        guard count > 0 else { return }
+        matchIndex = (min(matchIndex, count - 1) + delta + count) % count
+    }
+
+    private func closeFind() {
+        withAnimation(.snappy(duration: 0.2)) { findOpen = false }
+        query = ""
+    }
+
+    /// Every occurrence of `query` in the story's visible text, in reading order.
+    static func matches(in adv: Adventure, query: String) -> [FindMatch] {
+        guard !query.trimmed.isEmpty else { return [] }
+        return adv.actions.flatMap { a in
+            displayText(a).ranges(ofCaseInsensitive: query).indices.map { FindMatch(actionID: a.id, ordinal: $0) }
         }
     }
 }
@@ -195,6 +246,7 @@ private struct Composer: View {
     @State private var input = ""
     @FocusState private var focused: Bool
     @Namespace private var pill
+    @State private var tabMonitor: Any?
     @AppStorage(TextZoom.key) private var zoom = 1.0
 
     var body: some View {
@@ -242,6 +294,27 @@ private struct Composer: View {
         }
         .onChange(of: input) { store.setDraft(id, text: input, mode: mode) }
         .onChange(of: mode) { store.setDraft(id, text: input, mode: mode) }
+        .onAppear { installTabMonitor() }
+        .onDisappear {
+            if let tabMonitor { NSEvent.removeMonitor(tabMonitor) }
+            tabMonitor = nil
+        }
+    }
+
+    private static let modeOrder: [ActionType] = [.do, .say, .story, .guide]
+
+    /// Tab / Shift-Tab in the composer cycles Do → Say → Story → Guide.
+    private func installTabMonitor() {
+        guard tabMonitor == nil else { return }
+        tabMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let mods = event.modifierFlags.intersection([.command, .option, .control])
+            guard event.keyCode == 48, mods.isEmpty, focused else { return event }  // 48 = Tab
+            let order = Self.modeOrder
+            let i = order.firstIndex(of: mode) ?? 0
+            let step = event.modifierFlags.contains(.shift) ? order.count - 1 : 1
+            withAnimation(.snappy(duration: 0.22)) { mode = order[(i + step) % order.count] }
+            return nil
+        }
     }
 
     private var modePicker: some View {
@@ -295,6 +368,7 @@ private struct ActionRow: View {
     let advID: UUID
     let action: StoryAction
     let streaming: Bool
+    var highlight: Highlight?
     @Environment(Store.self) private var store
     @State private var editing = false
     @State private var draft = ""
@@ -310,7 +384,7 @@ private struct ActionRow: View {
             } else if isPlayer {
                 HStack(alignment: .top, spacing: 12) {
                     Capsule().fill(Theme.accent).frame(width: 2.5)
-                    Text(String(Prompt.format(action).dropFirst(2)))
+                    Text(highlighted(displayText(action)))
                         .font(.system(size: 15 * zoom, weight: .medium))
                         .foregroundStyle(Theme.accent)
                         .lineSpacing(4 * zoom)
@@ -362,7 +436,7 @@ private struct ActionRow: View {
         if streaming && action.text.isEmpty {
             TypingDots().padding(.vertical, 6)
         } else {
-            (Text(Prompt.format(action)) + Text(streaming ? " ▍" : "").foregroundColor(Theme.accent))
+            (Text(highlighted(displayText(action))) + Text(streaming ? " ▍" : "").foregroundColor(Theme.accent))
                 .font(Theme.story(zoom))
                 .lineSpacing(9 * zoom)
                 .foregroundStyle(Theme.text.opacity(0.92))
@@ -402,6 +476,19 @@ private struct ActionRow: View {
                 .keyboardShortcut(.return, modifiers: .command)
             }
         }
+    }
+
+    /// Text with find matches tinted; the current match is solid.
+    private func highlighted(_ text: String) -> AttributedString {
+        var attr = AttributedString(text)
+        guard let highlight else { return attr }
+        for (n, r) in text.ranges(ofCaseInsensitive: highlight.query).enumerated() {
+            guard let ar = Range(r, in: attr) else { continue }
+            let isCurrent = n == highlight.current
+            attr[ar].backgroundColor = Theme.accent.opacity(isCurrent ? 0.9 : 0.25)
+            if isCurrent { attr[ar].foregroundColor = .black }
+        }
+        return attr
     }
 
     private func startEditing() {
@@ -487,4 +574,80 @@ private struct PressScale: ButtonStyle {
 private struct ScrollMetrics: Equatable {
     let offset: CGFloat
     let distanceFromBottom: CGFloat
+}
+
+// MARK: - Find
+
+extension Notification.Name {
+    static let findInStory = Notification.Name("storyteller.findInStory")
+    static let findNext = Notification.Name("storyteller.findNext")
+    static let findPrevious = Notification.Name("storyteller.findPrevious")
+}
+
+struct FindMatch: Equatable {
+    let actionID: UUID
+    /// Which occurrence within that passage.
+    let ordinal: Int
+}
+
+private struct Highlight {
+    let query: String
+    let current: Int?
+}
+
+/// The text a passage shows on screen (player actions without the "> ").
+private func displayText(_ a: StoryAction) -> String {
+    let s = Prompt.format(a)
+    return a.type == .do || a.type == .say ? String(s.dropFirst(2)) : s
+}
+
+extension String {
+    func ranges(ofCaseInsensitive query: String) -> [Range<Index>] {
+        guard !query.isEmpty else { return [] }
+        var out: [Range<Index>] = []
+        var start = startIndex
+        while let r = range(of: query, options: [.caseInsensitive, .diacriticInsensitive], range: start..<endIndex) {
+            out.append(r)
+            start = r.upperBound
+        }
+        return out
+    }
+}
+
+private struct FindBar: View {
+    @Binding var query: String
+    let count: Int
+    let index: Int
+    let next: () -> Void
+    let previous: () -> Void
+    let close: () -> Void
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(Theme.secondary)
+            TextField("Find in story", text: $query)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .frame(width: 170)
+                .focused($focused)
+                .focusEffectDisabled()
+                .onSubmit(next)
+                .onExitCommand(perform: close)
+            Text(query.isEmpty ? "" : count == 0 ? "No results" : "\(index + 1) of \(count)")
+                .font(.system(size: 11.5).monospacedDigit())
+                .foregroundStyle(count == 0 && !query.isEmpty ? Color(red: 1, green: 0.55, blue: 0.5) : Theme.secondary)
+                .frame(minWidth: 62, alignment: .trailing)
+            IconButton(icon: "chevron.up", help: "Previous (⇧⌘G)", size: 24, action: previous).disabled(count == 0)
+            IconButton(icon: "chevron.down", help: "Next (⌘G or Return)", size: 24, action: next).disabled(count == 0)
+            IconButton(icon: "xmark", help: "Close (Esc)", size: 24, action: close)
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 6)
+        .padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.surface2))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.1)))
+        .shadow(color: .black.opacity(0.4), radius: 16, y: 6)
+        .onAppear { focused = true }
+    }
 }

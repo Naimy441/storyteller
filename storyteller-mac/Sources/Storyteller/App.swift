@@ -1,10 +1,13 @@
 import AppKit
+import Sparkle
 import SwiftUI
 
 @main
 struct StorytellerApp: App {
     @State private var store = Store()
     @AppStorage(TextZoom.key) private var zoom = 1.0
+    /// Sparkle: checks the appcast (SUFeedURL in Info.plist) daily and on demand.
+    private let updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     init() {
         // Lets `swift run` show a normal window and Dock icon too.
@@ -26,8 +29,19 @@ struct StorytellerApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1280, height: 820)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { updater.checkForUpdates(nil) }
+            }
             CommandGroup(replacing: .newItem) {
                 Button("New Story") { store.selection = nil }.keyboardShortcut("n")
+            }
+            CommandGroup(replacing: .textEditing) {
+                Button("Find in Story…") { NotificationCenter.default.post(name: .findInStory, object: nil) }
+                    .keyboardShortcut("f")
+                Button("Find Next") { NotificationCenter.default.post(name: .findNext, object: nil) }
+                    .keyboardShortcut("g")
+                Button("Find Previous") { NotificationCenter.default.post(name: .findPrevious, object: nil) }
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
             }
             CommandGroup(before: .toolbar) {
                 Button("Zoom In") { zoom = TextZoom.clamp(zoom + TextZoom.step) }.keyboardShortcut("=")
