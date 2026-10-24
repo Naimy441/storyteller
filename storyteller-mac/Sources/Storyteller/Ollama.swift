@@ -30,7 +30,7 @@ enum Ollama {
                         "messages": messages.map { ["role": $0.role, "content": $0.content] },
                         "options": [
                             "temperature": s.temperature,
-                            "num_predict": s.maxTokens,
+                            "num_predict": s.tokenCap,
                             "num_ctx": s.contextWindow,
                             "repeat_penalty": 1.1,
                         ],

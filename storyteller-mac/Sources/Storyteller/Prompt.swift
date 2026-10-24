@@ -83,7 +83,7 @@ enum Prompt {
 
     /// Tokens left for story history in a given context window.
     static func historyBudget(_ adv: Adventure, window: Int? = nil) -> Int {
-        max(0, (window ?? adv.settings.contextWindow) - fixedTokens(adv) - adv.settings.maxTokens - safetyMargin)
+        max(0, (window ?? adv.settings.contextWindow) - fixedTokens(adv) - adv.settings.tokenCap - safetyMargin)
     }
 
     /// The newest passages that fit in the history budget.
@@ -141,7 +141,7 @@ enum Prompt {
             plot: tokens(adv.plotEssentials + adv.summary + adv.authorsNote),
             cards: activeCards(adv).reduce(0) { $0 + tokens($1.name + $1.entry) + 4 },
             history: history.reduce(0) { $0 + tokens(format($1)) + 4 },
-            reserve: adv.settings.maxTokens,
+            reserve: adv.settings.tokenCap,
             window: adv.settings.contextWindow,
             turnsIncluded: history.count,
             turnsTotal: adv.actions.filter { !$0.text.trimmed.isEmpty }.count
@@ -165,6 +165,13 @@ enum Prompt {
     /// so the model wraps up naturally instead of being cut off.
     static func targetWords(_ adv: Adventure) -> Int {
         max(20, Int((Double(adv.settings.maxTokens) * 0.55 / 10).rounded()) * 10)
+    }
+
+    /// Splits streaming text into finished sentences and the sentence still being written.
+    /// Before the first sentence ends, everything counts as finished (nothing to dim yet).
+    static func splitPendingSentence(_ text: String) -> (done: String, pending: String) {
+        guard let r = text.range(of: #"[.!?…]["'”’)\]]*(?=[^.!?…]*$)"#, options: .regularExpression) else { return (text, "") }
+        return (String(text[..<r.upperBound]), String(text[r.upperBound...]))
     }
 
     /// Cuts text back to its last complete sentence (keeping closing quotes/brackets).

@@ -250,7 +250,7 @@ private struct SettingsTab: View {
         }
         SliderRow(title: "Temperature", hint: "Higher is more creative and chaotic.",
                   value: $adv.settings.temperature, range: 0.1...1.5, step: 0.05, format: "%.2f")
-        SliderRow(title: "Response length", hint: "Max tokens per AI turn.",
+        SliderRow(title: "Response length", hint: "Target tokens per AI turn (≈ \(Prompt.targetWords(adv)) words). Hard stop at 1.5×.",
                   value: intBinding($adv.settings.maxTokens), range: 60...600, step: 20, format: "%.0f")
         StoryMemoryPicker(adv: $adv)
     }
