@@ -758,12 +758,6 @@ private struct TurnMark: View {
             Capsule()
                 .fill(hovered ? Theme.text : active ? Theme.text.opacity(0.75) : Theme.secondary.opacity(0.4))
                 .frame(width: hovered ? 24 : active ? 17 : 10, height: hovered ? 4 : 3)
-                .overlay(alignment: .trailing) {
-                    // Guided passages get a small amber tip.
-                    if action.guide != nil {
-                        Circle().fill(Theme.accent).frame(width: 3, height: 3).offset(x: 5)
-                    }
-                }
         }
     }
 
