@@ -102,7 +102,7 @@ enum Prompt {
     static func build(_ adv: Adventure, guide: String? = nil) -> [ChatMessage] {
         let cards = activeCards(adv)
         var system = adv.aiInstructions.trimmed
-        system += "\n\nLength: write about \(targetWords(adv)) words, and always finish on a complete sentence."
+        system += "\n\n" + pacingRules(adv)
         if !adv.plotEssentials.trimmed.isEmpty { system += "\n\n## Plot Essentials\n" + adv.plotEssentials.trimmed }
         if !adv.summary.trimmed.isEmpty { system += "\n\n## Story So Far\n" + adv.summary.trimmed }
         if !cards.isEmpty {
@@ -146,6 +146,19 @@ enum Prompt {
             turnsIncluded: history.count,
             turnsTotal: adv.actions.filter { !$0.text.trimmed.isEmpty }.count
         )
+    }
+
+    /// Added to every story's system prompt: keeps passages short and open-ended. Small models
+    /// otherwise like to wrap scenes up ("…as the days passed, hope lingered.").
+    static func pacingRules(_ adv: Adventure) -> String {
+        """
+        ## Pacing
+        - Write about \(targetWords(adv)) words.
+        - Stay in the current moment. Never summarize, reflect on the journey, or skip ahead in time.
+        - Do not wrap up the scene or write a closing line. The story is ongoing.
+        - Stop in the middle of the action, at a point where the player must react: a character speaks \
+        to them, something happens, or a choice appears. End on a complete sentence.
+        """
     }
 
     /// Word target that leaves headroom under the token cap (~0.75 words per token, minus a margin)
