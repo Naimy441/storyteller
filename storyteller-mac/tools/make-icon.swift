@@ -22,23 +22,23 @@ shadow.shadowColor = NSColor.black.withAlphaComponent(0.35)
 shadow.shadowBlurRadius = 24
 shadow.shadowOffset = NSSize(width: 0, height: -10)
 shadow.set()
-NSGradient(starting: NSColor(red: 0.12, green: 0.125, blue: 0.155, alpha: 1),
+NSGradient(starting: NSColor(red: 0.17, green: 0.175, blue: 0.21, alpha: 1),
            ending: NSColor(red: 0.047, green: 0.051, blue: 0.066, alpha: 1))!.draw(in: shape, angle: -90)
 NSGraphicsContext.restoreGraphicsState()
 
-NSColor.white.withAlphaComponent(0.08).setStroke()
-shape.lineWidth = 3
+NSColor.white.withAlphaComponent(0.14).setStroke()
+shape.lineWidth = 4
 shape.stroke()
 
 // Soft amber glow behind the book.
 NSGraphicsContext.saveGraphicsState()
 shape.addClip()
-NSGradient(colors: [accent.withAlphaComponent(0.22), accent.withAlphaComponent(0)])!
-    .draw(fromCenter: NSPoint(x: 512, y: 500), radius: 0, toCenter: NSPoint(x: 512, y: 500), radius: 380, options: [])
+NSGradient(colors: [accent.withAlphaComponent(0.28), accent.withAlphaComponent(0)])!
+    .draw(fromCenter: NSPoint(x: 512, y: 500), radius: 0, toCenter: NSPoint(x: 512, y: 500), radius: 440, options: [])
 NSGraphicsContext.restoreGraphicsState()
 
 // The book symbol, filled with the accent gradient.
-let config = NSImage.SymbolConfiguration(pointSize: 430, weight: .regular)
+let config = NSImage.SymbolConfiguration(pointSize: 580, weight: .regular)
 let symbol = NSImage(systemSymbolName: "book.pages.fill", accessibilityDescription: nil)!.withSymbolConfiguration(config)!
 let s = symbol.size
 let rect = NSRect(x: (size - s.width) / 2, y: (size - s.height) / 2 - 8, width: s.width, height: s.height)
