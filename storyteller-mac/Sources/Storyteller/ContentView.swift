@@ -165,11 +165,36 @@ private struct StatusFooter: View {
                 .foregroundStyle(Theme.secondary)
             Spacer()
             IconButton(icon: "arrow.clockwise", help: "Recheck Ollama", size: 24) { store.refreshModels() }
-            IconButton(icon: "folder", help: "Open stories folder", size: 24) { NSWorkspace.shared.open(store.dir) }
+            Menu {
+                Button("Show in Finder") { NSWorkspace.shared.open(store.dir) }
+                Button("Change Folder…") { chooseFolder() }
+            } label: {
+                Image(systemName: "folder")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.secondary)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Stories folder: \(store.dir.path(percentEncoded: false))")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 12)
         .overlay(alignment: .top) { Theme.hairline.frame(height: 1) }
+    }
+
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.directoryURL = store.dir
+        panel.prompt = "Use Folder"
+        panel.message = "Choose where Storyteller keeps your stories."
+        if panel.runModal() == .OK, let url = panel.url { store.changeDirectory(to: url) }
     }
 }
 

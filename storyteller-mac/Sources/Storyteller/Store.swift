@@ -15,21 +15,35 @@ final class Store {
     /// What Ollama currently has in memory.
     var loadedModels: [String: LoadedModel] = [:]
 
-    let dir: URL
+    private(set) var dir: URL
+    static let dirKey = "storiesDir"
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var redoStacks: [UUID: [StoryAction]] = [:]
     @ObservationIgnored private var saveTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var filenames: [UUID: String] = [:]
 
     init() {
-        if let custom = ProcessInfo.processInfo.environment["STORYTELLER_DIR"] {
+        if let custom = ProcessInfo.processInfo.environment["STORYTELLER_DIR"] ?? UserDefaults.standard.string(forKey: Self.dirKey) {
             dir = URL(fileURLWithPath: custom)
         } else {
-            dir = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Desktop/local/stories")
+            dir = URL.applicationSupportDirectory.appending(path: "Storyteller/Stories")
         }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         load()
         refreshModels()
+    }
+
+    /// Switches to another stories folder and loads what's in it.
+    func changeDirectory(to url: URL) {
+        for id in tasks.keys { stop(id) }
+        flushSaves()
+        UserDefaults.standard.set(url.path, forKey: Self.dirKey)
+        dir = url
+        adventures = []
+        filenames = [:]
+        redoStacks = [:]
+        errors = [:]
+        load()
     }
 
     func refreshModels() {

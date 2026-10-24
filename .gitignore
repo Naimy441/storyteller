@@ -7,3 +7,4 @@ storyteller-mac/.swiftpm/
 storyteller-mac/Storyteller.app/
 
 .DS_Store
+storyteller-mac/dist/
