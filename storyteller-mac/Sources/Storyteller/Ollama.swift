@@ -9,7 +9,13 @@ enum Ollama {
     static let base = URL(string: ProcessInfo.processInfo.environment["OLLAMA_URL"] ?? "http://127.0.0.1:11434")!
 
     /// Streams text tokens from Ollama's /api/chat.
-    static func stream(_ messages: [ChatMessage], settings s: GenSettings) -> AsyncThrowingStream<String, Error> {
+    enum StreamEvent {
+        case text(String)
+        /// Ollama finished; `hitLimit` is true when it stopped at the token cap (often mid-sentence).
+        case done(hitLimit: Bool)
+    }
+
+    static func stream(_ messages: [ChatMessage], settings s: GenSettings) -> AsyncThrowingStream<StreamEvent, Error> {
         AsyncThrowingStream { cont in
             let task = Task {
                 do {
@@ -42,7 +48,10 @@ enum Ollama {
                               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
                         if let e = json["error"] as? String { throw OllamaError(message: e) }
                         if let msg = json["message"] as? [String: Any], let c = msg["content"] as? String, !c.isEmpty {
-                            cont.yield(c)
+                            cont.yield(.text(c))
+                        }
+                        if json["done"] as? Bool == true {
+                            cont.yield(.done(hitLimit: json["done_reason"] as? String == "length"))
                         }
                     }
                     cont.finish()

@@ -102,6 +102,7 @@ enum Prompt {
     static func build(_ adv: Adventure, guide: String? = nil) -> [ChatMessage] {
         let cards = activeCards(adv)
         var system = adv.aiInstructions.trimmed
+        system += "\n\nLength: write about \(targetWords(adv)) words, and always finish on a complete sentence."
         if !adv.plotEssentials.trimmed.isEmpty { system += "\n\n## Plot Essentials\n" + adv.plotEssentials.trimmed }
         if !adv.summary.trimmed.isEmpty { system += "\n\n## Story So Far\n" + adv.summary.trimmed }
         if !cards.isEmpty {
@@ -145,6 +146,20 @@ enum Prompt {
             turnsIncluded: history.count,
             turnsTotal: adv.actions.filter { !$0.text.trimmed.isEmpty }.count
         )
+    }
+
+    /// Word target that leaves headroom under the token cap (~0.75 words per token, minus a margin)
+    /// so the model wraps up naturally instead of being cut off.
+    static func targetWords(_ adv: Adventure) -> Int {
+        max(20, Int((Double(adv.settings.maxTokens) * 0.55 / 10).rounded()) * 10)
+    }
+
+    /// Cuts text back to its last complete sentence (keeping closing quotes/brackets).
+    /// Leaves it unchanged if that would remove most of it.
+    static func trimToLastSentence(_ text: String) -> String {
+        guard let r = text.range(of: #"[.!?…]["'”’)\]]*(?=[^.!?…]*$)"#, options: .regularExpression) else { return text }
+        let trimmed = String(text[..<r.upperBound])
+        return trimmed.count >= text.count / 3 ? trimmed : text
     }
 
     /// Small models sometimes write the player's next turn; cut it off.

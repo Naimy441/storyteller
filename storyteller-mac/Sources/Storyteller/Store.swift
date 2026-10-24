@@ -234,16 +234,23 @@ final class Store {
         tasks[id] = Task {
             var raw = ""
             var failure: String?
+            var cutOff = false
             do {
-                for try await chunk in Ollama.stream(messages, settings: adv.settings) {
-                    raw += chunk
-                    let text = String(raw.drop(while: \.isWhitespace))
-                    editAction(id, actionID: aiID, text: text)
+                for try await event in Ollama.stream(messages, settings: adv.settings) {
+                    switch event {
+                    case .text(let chunk):
+                        raw += chunk
+                        editAction(id, actionID: aiID, text: String(raw.drop(while: \.isWhitespace)))
+                    case .done(let hitLimit):
+                        cutOff = hitLimit
+                    }
                 }
             } catch {
-                if !Task.isCancelled { failure = Ollama.describe(error) }
+                if Task.isCancelled { cutOff = true } else { failure = Ollama.describe(error) }
             }
-            let final = Prompt.clean(raw)
+            // Stopped at the length cap (or by Stop): drop the unfinished last sentence.
+            var final = Prompt.clean(raw)
+            if cutOff { final = Prompt.trimToLastSentence(final) }
             if final.isEmpty { deleteAction(id, actionID: aiID) } else { editAction(id, actionID: aiID, text: final) }
             generating.remove(id)
             errors[id] = failure
