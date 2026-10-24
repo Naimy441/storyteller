@@ -677,7 +677,6 @@ private struct TurnRail: View {
     let visible: Set<UUID>
     let jump: (UUID) -> Void
     @State private var hovered: UUID?
-    @State private var railHover = false
 
     private let maxHeight: CGFloat = 440
 
@@ -715,12 +714,6 @@ private struct TurnRail: View {
                 }
             }
         }
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Theme.surface.opacity(railHover ? 0.9 : 0))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(railHover ? 0.07 : 0)))
-        )
-        .onHover { h in withAnimation(.easeOut(duration: 0.2)) { railHover = h } }
     }
 }
 
