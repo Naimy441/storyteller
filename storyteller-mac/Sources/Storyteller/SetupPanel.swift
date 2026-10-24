@@ -90,6 +90,7 @@ private struct PlotTab: View {
                     .font(.system(size: 11.5, weight: .medium))
                     .foregroundStyle(Theme.accent)
             }
+            AppendedRules(adv: adv)
         }
         Field(title: "Plot Essentials", hint: "Always remembered: who you are, the world, the goal.") {
             TextArea(text: $adv.plotEssentials, placeholder: "You are…", minHeight: 100)
@@ -357,6 +358,120 @@ private struct StoryMemoryPicker: View {
                 Image(systemName: icon).font(.system(size: 11)).foregroundStyle(Theme.secondary).frame(width: 14)
                 Text(text).font(.system(size: 12)).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+}
+
+/// Shows the text Storyteller adds after the AI Instructions, plus a full-prompt preview.
+private struct AppendedRules: View {
+    let adv: Adventure
+    @State private var expanded = false
+    @State private var showPrompt = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Button {
+                    withAnimation(.snappy(duration: 0.2)) { expanded.toggle() }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle").font(.system(size: 11))
+                        Text("Added automatically: pacing rules")
+                            .font(.system(size: 11.5, weight: .medium))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .rotationEffect(.degrees(expanded ? 180 : 0))
+                    }
+                    .foregroundStyle(Theme.secondary)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Sent after your AI Instructions on every turn")
+                Spacer()
+                Button("Full prompt…") { showPrompt = true }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(Theme.accent)
+                    .help("See everything the next turn sends to the AI")
+            }
+            if expanded {
+                Text(Prompt.pacingRules(adv))
+                    .font(.system(size: 11.5, design: .monospaced))
+                    .foregroundStyle(Theme.secondary)
+                    .lineSpacing(2)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Theme.bg.opacity(0.6)))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        .foregroundStyle(Color.white.opacity(0.12)))
+                    .transition(.opacity)
+            }
+        }
+        .sheet(isPresented: $showPrompt) { PromptPreview(adv: adv) }
+    }
+}
+
+/// Every message the next AI turn will send, exactly as built.
+private struct PromptPreview: View {
+    let adv: Adventure
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        let messages = Prompt.build(adv)
+        VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Full prompt").font(.system(size: 15, weight: .semibold))
+                    Text("What the next turn sends to \(adv.settings.model) · ≈ \(Prompt.usage(adv).total.formatted()) tokens incl. reply")
+                        .font(.system(size: 11.5)).foregroundStyle(Theme.secondary)
+                }
+                Spacer()
+                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+            }
+            .padding(16)
+            .overlay(alignment: .bottom) { Theme.hairline.frame(height: 1) }
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(Array(messages.enumerated()), id: \.offset) { _, m in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(label(m.role))
+                                .font(.system(size: 10.5, weight: .semibold))
+                                .tracking(0.8)
+                                .foregroundStyle(color(m.role))
+                            Text(m.content)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(Theme.text.opacity(0.9))
+                                .lineSpacing(2)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(12)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.surface))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.hairline))
+                    }
+                }
+                .padding(16)
+            }
+        }
+        .frame(width: 640, height: 620)
+        .background(Theme.sidebar)
+    }
+
+    private func label(_ role: String) -> String {
+        switch role {
+        case "system": "SYSTEM"
+        case "assistant": "AI"
+        default: "YOU"
+        }
+    }
+
+    private func color(_ role: String) -> Color {
+        switch role {
+        case "system": Theme.color(for: .faction)
+        case "assistant": Theme.secondary
+        default: Theme.accent
         }
     }
 }
