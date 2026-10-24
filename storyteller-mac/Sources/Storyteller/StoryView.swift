@@ -33,6 +33,8 @@ private struct StoryColumn: View {
     @AppStorage(TextZoom.key) private var zoom = 1.0
     @State private var pinchStart: Double?
     @State private var findOpen = false
+    /// Passages currently on screen, for the turn rail.
+    @State private var visibleIDs: Set<UUID> = []
     @State private var query = ""
     @State private var matchIndex = 0
 
@@ -67,6 +69,9 @@ private struct StoryColumn: View {
             }
             .scrollIndicators(.automatic)
             .scrollPosition($position)
+            .onScrollTargetVisibilityChange(idType: UUID.self, threshold: 0.2) { ids in
+                withAnimation(.snappy(duration: 0.25)) { visibleIDs = Set(ids) }
+            }
             .simultaneousGesture(
                 MagnifyGesture()
                     .onChanged { v in
@@ -116,6 +121,16 @@ private struct StoryColumn: View {
         }
         .overlay(alignment: .top) {
             TopBar(id: id, title: adv.title, busy: busy, showSetup: $showSetup)
+        }
+        .overlay(alignment: .leading) {
+            if adv.actions.count > 1 {
+                TurnRail(actions: adv.actions, visible: visibleIDs) { target in
+                    following = target == adv.actions.last?.id
+                    withAnimation(.smooth(duration: 0.45)) { position.scrollTo(id: target, anchor: UnitPoint(x: 0.5, y: 0.12)) }
+                }
+                .padding(.leading, 12)
+                .transition(.opacity)
+            }
         }
         .overlay(alignment: .topTrailing) {
             if findOpen {
@@ -651,5 +666,133 @@ private struct FindBar: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.1)))
         .shadow(color: .black.opacity(0.4), radius: 16, y: 6)
         .onAppear { focused = true }
+    }
+}
+
+// MARK: - Turn rail
+
+/// A mark per passage on the left edge: on-screen ones light up, hover previews, click jumps.
+private struct TurnRail: View {
+    let actions: [StoryAction]
+    let visible: Set<UUID>
+    let jump: (UUID) -> Void
+    @State private var hovered: UUID?
+    @State private var railHover = false
+
+    private let maxHeight: CGFloat = 440
+
+    var body: some View {
+        // Tighter spacing for long stories; the rail scrolls past ~60 marks.
+        let spacing = max(5, min(11, maxHeight / CGFloat(max(actions.count, 1)) - 4))
+        ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: spacing) {
+                    ForEach(actions) { a in
+                        TurnMark(action: a, active: visible.contains(a.id), hovered: hovered == a.id)
+                            .id(a.id)
+                            .onHover { h in
+                                withAnimation(.spring(duration: 0.3, bounce: 0.45)) {
+                                    if h { hovered = a.id } else if hovered == a.id { hovered = nil }
+                                }
+                            }
+                            .onTapGesture { jump(a.id) }
+                            .transition(.scale(scale: 0.2, anchor: .leading).combined(with: .opacity))
+                    }
+                }
+                .padding(.vertical, 10)
+                .padding(.leading, 8)
+                .padding(.trailing, 14)
+                .animation(.spring(duration: 0.4, bounce: 0.35), value: actions.count)
+            }
+            .scrollIndicators(.never)
+            .scrollClipDisabled()
+            .frame(maxHeight: maxHeight)
+            .fixedSize(horizontal: true, vertical: true)
+            .onChange(of: visible) {
+                // Keep the on-screen marks in view on long stories.
+                if let first = actions.first(where: { visible.contains($0.id) }) {
+                    withAnimation(.smooth(duration: 0.3)) { proxy.scrollTo(first.id, anchor: .center) }
+                }
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Theme.surface.opacity(railHover ? 0.9 : 0))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(railHover ? 0.07 : 0)))
+        )
+        .onHover { h in withAnimation(.easeOut(duration: 0.2)) { railHover = h } }
+    }
+}
+
+private struct TurnMark: View {
+    let action: StoryAction
+    let active: Bool
+    let hovered: Bool
+
+    private var isPlayer: Bool { action.type == .do || action.type == .say }
+
+    var body: some View {
+        // Wide hit area so small marks are easy to click.
+        ZStack(alignment: .leading) {
+            Color.clear.frame(width: 26, height: 12)
+            mark
+        }
+        .contentShape(Rectangle())
+        .overlay(alignment: .leading) {
+            if hovered {
+                preview
+                    .offset(x: 34)
+                    .transition(.scale(scale: 0.85, anchor: .leading).combined(with: .opacity))
+            }
+        }
+        .zIndex(hovered ? 1 : 0)
+    }
+
+    @ViewBuilder private var mark: some View {
+        if isPlayer {
+            Circle()
+                .fill(Theme.accent.opacity(active || hovered ? 1 : 0.45))
+                .frame(width: hovered ? 10 : active ? 7 : 5, height: hovered ? 10 : active ? 7 : 5)
+                .shadow(color: Theme.accent.opacity(hovered ? 0.7 : 0), radius: 6)
+        } else {
+            Capsule()
+                .fill(hovered ? Theme.text : active ? Theme.text.opacity(0.75) : Theme.secondary.opacity(0.4))
+                .frame(width: hovered ? 24 : active ? 17 : 10, height: hovered ? 4 : 3)
+                .overlay(alignment: .trailing) {
+                    // Guided passages get a small amber tip.
+                    if action.guide != nil {
+                        Circle().fill(Theme.accent).frame(width: 3, height: 3).offset(x: 5)
+                    }
+                }
+        }
+    }
+
+    private var preview: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.system(size: 9.5, weight: .semibold))
+                .tracking(0.7)
+                .foregroundStyle(isPlayer ? Theme.accent : Theme.tertiary)
+            Text(displayText(action))
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.text.opacity(0.9))
+                .lineLimit(3)
+                .frame(width: 240, alignment: .leading)
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.surface2))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1)))
+        .shadow(color: .black.opacity(0.45), radius: 14, y: 5)
+        .fixedSize()
+        .allowsHitTesting(false)
+    }
+
+    private var label: String {
+        switch action.type {
+        case .do: "YOU DO"
+        case .say: "YOU SAY"
+        case .story: "STORY"
+        default: action.guide == nil ? "AI" : "AI · GUIDED"
+        }
     }
 }
