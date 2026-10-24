@@ -12,7 +12,8 @@ enum Ollama {
     enum StreamEvent {
         case text(String)
         /// Ollama finished; `hitLimit` is true when it stopped at the token cap (often mid-sentence).
-        case done(hitLimit: Bool)
+        /// `promptTokens` is Ollama's exact prompt length (reported in full even when cached).
+        case done(hitLimit: Bool, promptTokens: Int?)
     }
 
     static func stream(_ messages: [ChatMessage], settings s: GenSettings) -> AsyncThrowingStream<StreamEvent, Error> {
@@ -30,7 +31,7 @@ enum Ollama {
                         "messages": messages.map { ["role": $0.role, "content": $0.content] },
                         "options": [
                             "temperature": s.temperature,
-                            "num_predict": s.tokenCap,
+                            "num_predict": s.maxTokens,
                             "num_ctx": s.contextWindow,
                             "repeat_penalty": 1.1,
                         ],
@@ -51,7 +52,8 @@ enum Ollama {
                             cont.yield(.text(c))
                         }
                         if json["done"] as? Bool == true {
-                            cont.yield(.done(hitLimit: json["done_reason"] as? String == "length"))
+                            cont.yield(.done(hitLimit: json["done_reason"] as? String == "length",
+                                             promptTokens: (json["prompt_eval_count"] as? NSNumber)?.intValue))
                         }
                     }
                     cont.finish()
@@ -61,6 +63,25 @@ enum Ollama {
             }
             cont.onTermination = { _ in task.cancel() }
         }
+    }
+
+    /// Exact token count of a prompt, from Ollama itself (generates a single token).
+    /// It also leaves the prompt in Ollama's cache, so the next real turn starts faster.
+    static func countPromptTokens(_ messages: [ChatMessage], settings s: GenSettings) async -> Int? {
+        var req = URLRequest(url: base.appending(path: "api/chat"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 300
+        req.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "model": s.model,
+            "stream": false,
+            "keep_alive": "30m",
+            "messages": messages.map { ["role": $0.role, "content": $0.content] },
+            "options": ["num_predict": 1, "num_ctx": s.contextWindow],
+        ] as [String: Any])
+        guard let (data, _) = try? await URLSession.shared.data(for: req),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return (json["prompt_eval_count"] as? NSNumber)?.intValue
     }
 
     static func models() async -> [String] {

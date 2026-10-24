@@ -3,11 +3,12 @@ import SwiftUI
 /// Small ring showing how full the model's context window will be on the next turn.
 struct ContextRing: View {
     let adventure: Adventure
+    @Environment(Store.self) private var store
     @State private var showDetails = false
     @State private var hover = false
 
     var body: some View {
-        let usage = Prompt.usage(adventure)
+        let usage = Prompt.usage(adventure, scale: store.tokenScale[adventure.id])
         let tint = Self.tint(usage.fraction)
         Button { showDetails.toggle() } label: {
             HStack(spacing: 6) {
@@ -55,7 +56,7 @@ private struct ContextDetails: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("Context").font(.system(size: 13, weight: .semibold))
                 Spacer()
-                Text("≈ \(usage.total.formatted()) / \(usage.window.formatted()) tokens")
+                Text("\(usage.calibrated ? "" : "≈ ")\(usage.total.formatted()) / \(usage.window.formatted()) tokens")
                     .font(.system(size: 11.5).monospacedDigit())
                     .foregroundStyle(Theme.secondary)
             }
@@ -113,6 +114,8 @@ private struct ContextDetails: View {
         let base = usage.turnsIncluded < usage.turnsTotal
             ? "Sending the last \(usage.turnsIncluded) of \(usage.turnsTotal) passages. Older ones drop out — keep key facts in Plot Essentials or the Summary."
             : "The whole story fits. Change how much the AI remembers with Story memory in Settings."
-        return base + " Counts are estimates (~4 characters per token)."
+        return base + (usage.calibrated
+            ? " Counts are matched to Ollama's exact token count from your latest turn."
+            : " Counts are estimates until Ollama reports its exact count.")
     }
 }

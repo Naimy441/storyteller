@@ -50,9 +50,6 @@ struct GenSettings: Codable, Equatable {
     var model = "hermes3:3b"
     var temperature = 0.85
     var maxTokens = 220
-    /// Hard stop sent to Ollama. Above `maxTokens` so a reply that runs a little
-    /// long can finish its sentence instead of being cut mid-word.
-    var tokenCap: Int { maxTokens * 3 / 2 }
     /// Context window in tokens (Ollama's num_ctx). Story history fills whatever is left.
     var contextWindow = 8192
 

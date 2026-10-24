@@ -250,7 +250,7 @@ private struct SettingsTab: View {
         }
         SliderRow(title: "Temperature", hint: "Higher is more creative and chaotic.",
                   value: $adv.settings.temperature, range: 0.1...1.5, step: 0.05, format: "%.2f")
-        SliderRow(title: "Response length", hint: "Target tokens per AI turn (≈ \(Prompt.targetWords(adv)) words). Hard stop at 1.5×.",
+        SliderRow(title: "Response length", hint: "Max tokens per AI turn.",
                   value: intBinding($adv.settings.maxTokens), range: 60...600, step: 20, format: "%.0f")
         StoryMemoryPicker(adv: $adv)
     }
@@ -415,6 +415,7 @@ private struct AppendedRules: View {
 /// Every message the next AI turn will send, exactly as built.
 private struct PromptPreview: View {
     let adv: Adventure
+    @Environment(Store.self) private var store
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -423,7 +424,7 @@ private struct PromptPreview: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Full prompt").font(.system(size: 15, weight: .semibold))
-                    Text("What the next turn sends to \(adv.settings.model) · ≈ \(Prompt.usage(adv).total.formatted()) tokens incl. reply")
+                    Text("What the next turn sends to \(adv.settings.model) · \(Prompt.usage(adv, scale: store.tokenScale[adv.id]).total.formatted()) tokens incl. reply")
                         .font(.system(size: 11.5)).foregroundStyle(Theme.secondary)
                 }
                 Spacer()

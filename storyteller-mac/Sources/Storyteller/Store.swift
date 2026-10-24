@@ -12,6 +12,8 @@ final class Store {
     var ollamaModels: [String]?
     /// Architecture info per model name, for RAM estimates.
     var modelInfos: [String: ModelInfo] = [:]
+    /// Per story: Ollama's exact prompt tokens ÷ our estimate, from the latest measurement.
+    var tokenScale: [UUID: Double] = [:]
     /// What Ollama currently has in memory.
     var loadedModels: [String: LoadedModel] = [:]
 
@@ -48,6 +50,22 @@ final class Store {
 
     func refreshModels() {
         Task { ollamaModels = await Ollama.models() }
+    }
+
+    private func calibrate(_ id: UUID, actual: Int?, messages: [ChatMessage]) {
+        let estimate = Prompt.estimate(messages)
+        guard let actual, actual > 0, estimate > 0 else { return }
+        tokenScale[id] = Double(actual) / Double(estimate)
+    }
+
+    /// Measures a story's prompt with Ollama once, if we haven't yet (e.g. on opening it).
+    func measureTokens(_ id: UUID) {
+        guard tokenScale[id] == nil, !generating.contains(id), let adv = adventure(id), !adv.actions.isEmpty else { return }
+        let messages = Prompt.build(adv)
+        Task {
+            let actual = await Ollama.countPromptTokens(messages, settings: adv.settings)
+            if tokenScale[id] == nil { calibrate(id, actual: actual, messages: messages) }
+        }
     }
 
     func refreshMemoryInfo(model: String) {
@@ -241,8 +259,9 @@ final class Store {
                     case .text(let chunk):
                         raw += chunk
                         editAction(id, actionID: aiID, text: String(raw.drop(while: \.isWhitespace)))
-                    case .done(let hitLimit):
+                    case .done(let hitLimit, let promptTokens):
                         cutOff = hitLimit
+                        calibrate(id, actual: promptTokens, messages: messages)
                     }
                 }
             } catch {

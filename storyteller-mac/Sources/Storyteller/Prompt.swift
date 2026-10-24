@@ -83,7 +83,7 @@ enum Prompt {
 
     /// Tokens left for story history in a given context window.
     static func historyBudget(_ adv: Adventure, window: Int? = nil) -> Int {
-        max(0, (window ?? adv.settings.contextWindow) - fixedTokens(adv) - adv.settings.tokenCap - safetyMargin)
+        max(0, (window ?? adv.settings.contextWindow) - fixedTokens(adv) - adv.settings.maxTokens - safetyMargin)
     }
 
     /// The newest passages that fit in the history budget.
@@ -134,18 +134,28 @@ enum Prompt {
     static func tokens(_ s: String) -> Int { (s.count + 3) / 4 }
 
     /// Estimated context the next AI turn will use, split by source.
-    static func usage(_ adv: Adventure) -> ContextUsage {
+    /// `scale` corrects the ~4-characters-per-token estimate using Ollama's exact count
+    /// (actual ÷ estimated from the last measured prompt); nil means uncalibrated.
+    static func usage(_ adv: Adventure, scale: Double? = nil) -> ContextUsage {
         let history = recentHistory(adv)
+        let k = scale ?? 1
+        func scaled(_ n: Int) -> Int { Int((Double(n) * k).rounded()) }
         return ContextUsage(
-            instructions: tokens(adv.aiInstructions),
-            plot: tokens(adv.plotEssentials + adv.summary + adv.authorsNote),
-            cards: activeCards(adv).reduce(0) { $0 + tokens($1.name + $1.entry) + 4 },
-            history: history.reduce(0) { $0 + tokens(format($1)) + 4 },
-            reserve: adv.settings.tokenCap,
+            instructions: scaled(tokens(adv.aiInstructions) + tokens(pacingRules(adv))),
+            plot: scaled(tokens(adv.plotEssentials + adv.summary + adv.authorsNote)),
+            cards: scaled(activeCards(adv).reduce(0) { $0 + tokens($1.name + $1.entry) + 4 }),
+            history: scaled(history.reduce(0) { $0 + tokens(format($1)) + 4 }),
+            reserve: adv.settings.maxTokens,
             window: adv.settings.contextWindow,
             turnsIncluded: history.count,
-            turnsTotal: adv.actions.filter { !$0.text.trimmed.isEmpty }.count
+            turnsTotal: adv.actions.filter { !$0.text.trimmed.isEmpty }.count,
+            calibrated: scale != nil
         )
+    }
+
+    /// Our estimate for a built prompt, to compare against Ollama's exact count.
+    static func estimate(_ messages: [ChatMessage]) -> Int {
+        messages.reduce(0) { $0 + tokens($1.content) + 4 }
     }
 
     /// Added to every story's system prompt: keeps passages short and open-ended. Small models
@@ -165,13 +175,6 @@ enum Prompt {
     /// so the model wraps up naturally instead of being cut off.
     static func targetWords(_ adv: Adventure) -> Int {
         max(20, Int((Double(adv.settings.maxTokens) * 0.55 / 10).rounded()) * 10)
-    }
-
-    /// Splits streaming text into finished sentences and the sentence still being written.
-    /// Before the first sentence ends, everything counts as finished (nothing to dim yet).
-    static func splitPendingSentence(_ text: String) -> (done: String, pending: String) {
-        guard let r = text.range(of: #"[.!?…]["'”’)\]]*(?=[^.!?…]*$)"#, options: .regularExpression) else { return (text, "") }
-        return (String(text[..<r.upperBound]), String(text[r.upperBound...]))
     }
 
     /// Cuts text back to its last complete sentence (keeping closing quotes/brackets).
@@ -206,6 +209,8 @@ struct ContextUsage {
     var window: Int
     var turnsIncluded: Int
     var turnsTotal: Int
+    /// True when counts are corrected with Ollama's exact numbers.
+    var calibrated = false
 
     var total: Int { instructions + plot + cards + history + reserve }
     var fraction: Double { min(Double(total) / Double(window), 1) }

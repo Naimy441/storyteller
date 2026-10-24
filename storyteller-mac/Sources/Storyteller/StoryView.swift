@@ -17,6 +17,8 @@ struct StoryView: View {
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
+        // Get Ollama's exact token count for the context ring (and warm its cache).
+        .task { store.measureTokens(id) }
     }
 }
 
@@ -436,7 +438,7 @@ private struct ActionRow: View {
         if streaming && action.text.isEmpty {
             TypingDots().padding(.vertical, 6)
         } else {
-            streamingText
+            (Text(highlighted(displayText(action))) + Text(streaming ? " ▍" : "").foregroundColor(Theme.accent))
                 .font(Theme.story(zoom))
                 .lineSpacing(9 * zoom)
                 .foregroundStyle(Theme.text.opacity(0.92))
@@ -476,17 +478,6 @@ private struct ActionRow: View {
                 .keyboardShortcut(.return, modifiers: .command)
             }
         }
-    }
-
-    /// While streaming, the sentence still being written is dimmed, so if it gets trimmed
-    /// at the end it reads as a draft disappearing rather than text being yanked away.
-    private var streamingText: Text {
-        let text = displayText(action)
-        guard streaming else { return Text(highlighted(text)) }
-        let (done, pending) = Prompt.splitPendingSentence(text)
-        return Text(highlighted(done))
-            + Text(pending).foregroundColor(Theme.text.opacity(0.45))
-            + Text(" ▍").foregroundColor(Theme.accent)
     }
 
     /// Text with find matches tinted; the current match is solid.
