@@ -1,0 +1,9 @@
+# Your stories (personal data)
+stories/
+
+# Build output
+storyteller-mac/.build/
+storyteller-mac/.swiftpm/
+storyteller-mac/Storyteller.app/
+
+.DS_Store
